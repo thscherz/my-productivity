@@ -1,0 +1,18 @@
+# Automatische Zeilenenden normalisieren
+* text=auto
+
+# Shell-Scripts immer LF
+*.sh text eol=lf
+
+# Python immer LF
+*.py text eol=lf
+
+# YAML immer LF
+*.yml text eol=lf
+*.yaml text eol=lf
+
+# Binaries
+*.db binary
+*.png binary
+*.jpg binary
+*.ico binary

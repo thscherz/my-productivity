@@ -1,0 +1,38 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Design-System "Klassisch" — CSS-Variablen */
+:root {
+  --color-primary: #1E3A5F;
+  --color-accent: #2E6DA4;
+  --color-bg-light: #F5F4F2;
+  --color-text: #1A1A1A;
+  --color-muted: #6B6B6B;
+}
+
+body {
+  background-color: #F5F4F2;
+  color: #1A1A1A;
+}
+
+/* Scrollbar fuer das Kanban-Board */
+.kanban-scroll::-webkit-scrollbar {
+  height: 8px;
+}
+.kanban-scroll::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 4px;
+}
+.kanban-scroll::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+.kanban-scroll::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Verhindert Textauswahl waehrend Drag & Drop */
+.dragging {
+  user-select: none;
+}
