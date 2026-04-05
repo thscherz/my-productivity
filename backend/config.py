@@ -12,7 +12,7 @@ class Settings(BaseSettings):
 
     # Server
     host: str = "0.0.0.0"
-    port: int = 8002
+    port: int = 8001
 
     # App-eigener Passwort-Schutz (Session-Cookie)
     app_password: str = ""

@@ -72,6 +72,16 @@ async def lifespan(app: FastAPI):
     """Startup: Datenverzeichnis, Datenbank-Tabellen und Scheduler erstellen."""
     logger.info("myProductivity startet...")
 
+    # Sicherheitsprüfung: SESSION_SECRET darf kein Dummy-Wert sein
+    _settings = get_settings()
+    _insecure_defaults = {"change-me-in-production", "", "secret", "changeme"}
+    if not _settings.session_secret or _settings.session_secret.strip().lower() in _insecure_defaults:
+        raise RuntimeError(
+            "SESSION_SECRET ist nicht gesetzt oder verwendet einen unsicheren Standard-Wert. "
+            "Bitte SESSION_SECRET in der .env-Datei auf einen zufälligen, starken Wert setzen "
+            "(z.B. mit: python -c \"import secrets; print(secrets.token_hex(32))\")."
+        )
+
     # Datenverzeichnis und Upload-Verzeichnis für Anhänge erstellen
     os.makedirs("data", exist_ok=True)
     os.makedirs(os.path.join("data", "attachments"), exist_ok=True)
@@ -111,11 +121,13 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS für Entwicklung (Vite Dev Server auf Port 5173 und alternatives Port 3000)
+# CORS für Entwicklung (Vite Dev Server auf Port 5174, Fallback 5173 und 3000)
 settings = get_settings()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
+        "http://localhost:5174",
+        "http://127.0.0.1:5174",
         "http://localhost:5173",
         "http://127.0.0.1:5173",
         "http://localhost:3000",

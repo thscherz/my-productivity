@@ -27,3 +27,12 @@ Thumbs.db
 
 # Backups
 *.bak
+
+# Test-Datenbanken
+backend/tests/*.db
+
+# Ausgabe-Verzeichnisse
+outputs/
+
+# Log-Dateien
+*.log
