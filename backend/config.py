@@ -18,6 +18,10 @@ class Settings(BaseSettings):
     app_password: str = ""
     session_secret: str = "change-me-in-production"
 
+    # API-Key für programmatischen Zugriff (z.B. curl, externe Tools)
+    # Wird über den Header X-API-Key übergeben und umgeht die Cookie-Auth
+    api_key: str = ""
+
     model_config = {
         "env_file": ".env",
         "env_file_encoding": "utf-8",

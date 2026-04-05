@@ -138,11 +138,30 @@ app.add_middleware(
 )
 
 
+def _verify_api_key(request: Request) -> bool:
+    """
+    Prüft ob der Header X-API-Key einen gültigen, konfigurierten API-Key enthält.
+    Gibt False zurück wenn kein API_KEY in den Settings gesetzt ist (leerer String).
+    """
+    settings = get_settings()
+
+    # Kein API_KEY konfiguriert → Feature deaktiviert, nie akzeptieren
+    if not settings.api_key:
+        return False
+
+    header_key = request.headers.get("X-API-Key", "")
+    return header_key == settings.api_key
+
+
 @app.middleware("http")
 async def session_auth_middleware(request: Request, call_next):
     """
-    Prüft bei jedem API-Request ob ein gültiges Session-Cookie vorhanden ist.
-    Whitelisted Endpunkte und statische Dateien werden ohne Prüfung durchgelassen.
+    Prüft bei jedem API-Request die Authentifizierung.
+    Reihenfolge:
+      1. Whitelisted Endpunkte → immer durchlassen
+      2. X-API-Key Header gültig → durchlassen (für programmatischen Zugriff)
+      3. Session-Cookie gültig → durchlassen (für Browser-Zugriff)
+      4. Sonst → 401 Unauthorized
     """
     path = request.url.path
 
@@ -150,15 +169,20 @@ async def session_auth_middleware(request: Request, call_next):
     if _is_whitelisted(path):
         return await call_next(request)
 
-    # Session-Cookie prüfen
-    if not verify_session_cookie(request):
-        logger.debug("Unauthentifizierter API-Zugriff auf: %s", path)
-        return JSONResponse(
-            status_code=401,
-            content={"detail": "Nicht eingeloggt."},
-        )
+    # API-Key-Authentifizierung: Header X-API-Key prüfen
+    if _verify_api_key(request):
+        logger.debug("API-Key-Authentifizierung erfolgreich für: %s", path)
+        return await call_next(request)
 
-    return await call_next(request)
+    # Cookie-Authentifizierung für Browser-Zugriff
+    if verify_session_cookie(request):
+        return await call_next(request)
+
+    logger.debug("Unauthentifizierter API-Zugriff auf: %s", path)
+    return JSONResponse(
+        status_code=401,
+        content={"detail": "Nicht eingeloggt."},
+    )
 
 
 # Auth-Router zuerst registrieren
