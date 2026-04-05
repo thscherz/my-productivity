@@ -1,4 +1,4 @@
-name: Build & Deploy myProductivity
+name: Deploy myProductivity
 
 on:
   push:
@@ -6,71 +6,73 @@ on:
       - main
 
 jobs:
-  deploy:
-    name: Deploy to Netcup VPS
+  # ===========================================================================
+  # Job 1: Docker Image bauen und testen (lokaler Test-Build)
+  # ===========================================================================
+  build:
+    name: Docker Image bauen
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Code
+      - name: Code auschecken
         uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
+      - name: Docker Buildx einrichten
         uses: docker/setup-buildx-action@v3
 
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and Push Docker Image
+      - name: Docker Image bauen (Test-Build ohne Push)
         uses: docker/build-push-action@v5
         with:
           context: .
-          push: true
-          tags: ghcr.io/thscherz/my-productivity:latest
+          push: false
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          tags: ghcr.io/thscherz/my-productivity:test
 
-      - name: Deploy via SSH
+  # ===========================================================================
+  # Job 2: Auf Netcup VPS deployen (git pull + build on VPS)
+  # ===========================================================================
+  deploy:
+    name: Auf VPS deployen
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+      - name: Per SSH auf Netcup VPS deployen
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
-            cd /opt/my-productivity
+            set -e
 
-            # Neuestes Image pullen
-            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-            docker pull ghcr.io/thscherz/my-productivity:latest
+            echo "=== myProductivity Deployment gestartet ==="
+            echo "Zeitstempel: $(date '+%Y-%m-%d %H:%M:%S')"
 
-            # docker-compose.yml aktualisieren (aus dem Repo)
-            cat > docker-compose.yml << 'EOF'
-            services:
-              my-productivity:
-                image: ghcr.io/thscherz/my-productivity:latest
-                container_name: my-productivity
-                ports:
-                  - "8001:8001"
-                volumes:
-                  - ./data:/app/backend/data
-                env_file:
-                  - .env
-                restart: unless-stopped
-                healthcheck:
-                  test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/api/v1/health')"]
-                  interval: 30s
-                  timeout: 10s
-                  retries: 3
-                  start_period: 15s
-            EOF
+            # In Projektverzeichnis wechseln
+            cd ~/myproductivity
 
-            # Service neu starten
-            docker compose up -d --remove-orphans
+            # Neuesten Code holen
+            echo "--- git pull ---"
+            git pull origin main
 
-            # Altes Image aufraumen
-            docker image prune -f
+            # Datenbank sichern vor neuem Deploy
+            echo "--- DB Backup ---"
+            if [ -f "data/myproductivity.db" ]; then
+              cp data/myproductivity.db data/myproductivity.db.pre-deploy.$(date +\%Y\%m\%d-\%H\%M\%S)
+              echo "Datenbank-Backup erstellt"
+            else
+              echo "Keine Datenbank gefunden, kein Backup nötig"
+            fi
 
-            echo "Deployment abgeschlossen: $(date)"
+            # Container neu bauen und starten
+            echo "--- docker compose up -d --build ---"
+            docker compose up -d --build
+
+            # Kurz warten, dann Health-Check
+            echo "--- Health-Check ---"
+            sleep 5
+            curl -sf http://localhost:8001/api/v1/health || (echo "FEHLER: Health-Check fehlgeschlagen!" && exit 1)
+
+            echo "=== Deployment erfolgreich abgeschlossen ==="
