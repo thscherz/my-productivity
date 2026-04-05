@@ -32,9 +32,9 @@ export const HORIZON_LABELS = {
 };
 
 // Sichtbare Horizonte im Kanban-Board
-export const VISIBLE_HORIZONS = ["inbox", "today", "tomorrow", "this_week", "next_week", "this_quarter", "this_year", "someday_maybe"];
+export const VISIBLE_HORIZONS = ["inbox", "today", "tomorrow", "this_week", "next_week", "this_month", "this_quarter", "this_year", "someday_maybe"];
 
-// Horizonte für Dropdowns (nur die sichtbaren)
+// Horizonte für Dropdowns (alle sinnvollen — inkl. weniger häufig genutzter)
 export const HORIZON_DROPDOWN = VISIBLE_HORIZONS;
 
 // Vollständige Reihenfolge aller Horizonte (inkl. der in DB existierenden aber nicht sichtbaren)

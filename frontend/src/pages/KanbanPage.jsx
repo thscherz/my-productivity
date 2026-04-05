@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import Layout from "../components/layout/Layout";
 import KanbanBoard from "../components/kanban/KanbanBoard";
 import TaskCreateModal from "../components/tasks/TaskCreateModal";
+import TaskSidePanel from "../components/tasks/TaskSidePanel";
 import LoadingSpinner from "../components/common/LoadingSpinner";
 import { tasksApi } from "../api/tasks";
 import { projectsApi } from "../api/projects";
@@ -24,6 +25,9 @@ export default function KanbanPage({ onLogout }) {
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [defaultHorizon, setDefaultHorizon] = useState("today");
 
+  // Sidebar-State: geöffnete Task-ID (null = geschlossen)
+  const [sidebarTaskId, setSidebarTaskId] = useState(null);
+
   // Filter-State (tag_ids und priority werden client-side gefiltert)
   const [filters, setFilters] = useState({
     project_id: "",
@@ -32,6 +36,9 @@ export default function KanbanPage({ onLogout }) {
     priority: "",
     tag_ids: [],
   });
+
+  // Abgeschlossene Arbeitspakete ausblenden (Standard: true)
+  const [hideCompletedWP, setHideCompletedWP] = useState(true);
 
   // Kanban-Daten laden
   const fetchKanban = useCallback(async () => {
@@ -77,7 +84,7 @@ export default function KanbanPage({ onLogout }) {
     const newStatus = task.status === "done" ? "open" : "done";
     try {
       await tasksApi.update(task.id, { ...task, status: newStatus });
-      fetchKanban();
+      await fetchKanban(); // await damit Board nach Update sofort aktualisiert wird
     } catch (err) {
       console.error("Fehler beim Status-Update:", err);
     }
@@ -88,6 +95,22 @@ export default function KanbanPage({ onLogout }) {
     setDefaultHorizon(horizon);
     setCreateModalOpen(true);
   };
+
+  // Task-Klick → Sidebar öffnen statt zur Detailseite navigieren
+  const handleOpenSidebar = useCallback((pathOrId) => {
+    // pathOrId kann "/task/123" (von TaskCard) oder eine reine ID (number) sein
+    if (typeof pathOrId === "string" && pathOrId.startsWith("/task/")) {
+      const id = parseInt(pathOrId.replace("/task/", ""), 10);
+      setSidebarTaskId(id);
+    } else if (typeof pathOrId === "number") {
+      setSidebarTaskId(pathOrId);
+    }
+  }, []);
+
+  // Sidebar schliessen
+  const handleCloseSidebar = useCallback(() => {
+    setSidebarTaskId(null);
+  }, []);
 
   // Keyboard Shortcut: "t" öffnet Task-Erstellen-Modal
   useEffect(() => {
@@ -104,9 +127,23 @@ export default function KanbanPage({ onLogout }) {
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [createModalOpen]);
 
-  // Client-Side-Filtering für Priority und Tags
-  const filteredColumns = {};
+  // Client-Side-Filtering für Priority, Tags und abgeschlossene Arbeitspakete
   const cols = kanbanData.columns || {};
+
+  // Spaltenübergreifende Map: WP-ID → Status (für Subtask-Filterung)
+  // Muss vor der Spalten-Iteration gebaut werden
+  const wpStatusMap = {};
+  if (hideCompletedWP) {
+    for (const col of Object.values(cols)) {
+      for (const task of col.tasks || []) {
+        if (task.is_work_package) {
+          wpStatusMap[String(task.id)] = task.status;
+        }
+      }
+    }
+  }
+
+  const filteredColumns = {};
   for (const [horizon, col] of Object.entries(cols)) {
     let tasks = col.tasks || [];
     if (filters.priority) {
@@ -116,6 +153,21 @@ export default function KanbanPage({ onLogout }) {
       tasks = tasks.filter((t) =>
         filters.tag_ids.every((tagId) => t.tags?.some((tag) => tag.id === tagId))
       );
+    }
+    // Abgeschlossene Arbeitspakete und deren Subtasks ausblenden
+    if (hideCompletedWP) {
+      // Erledigte/abgebrochene WPs selbst entfernen
+      tasks = tasks.filter(
+        (t) => !(t.is_work_package && (t.status === "done" || t.status === "cancelled"))
+      );
+      // Subtasks entfernen, deren Parent-WP erledigt/abgebrochen ist
+      // (spaltenübergreifend — Parent kann in anderer Spalte liegen)
+      tasks = tasks.filter((t) => {
+        if (!t.parent_id) return true; // Top-Level Tasks immer behalten
+        const parentStatus = wpStatusMap[String(t.parent_id)];
+        if (!parentStatus) return true; // Parent unbekannt → behalten
+        return parentStatus !== "done" && parentStatus !== "cancelled";
+      });
     }
     filteredColumns[horizon] = { tasks };
   }
@@ -136,6 +188,8 @@ export default function KanbanPage({ onLogout }) {
       onFilterChange={setFilters}
       onCreateTask={() => handleCreateTask("today")}
       onLogout={onLogout}
+      hideCompletedWP={hideCompletedWP}
+      onToggleHideCompletedWP={() => setHideCompletedWP((v) => !v)}
     >
       {/* Fehler-Banner */}
       {error && (
@@ -147,13 +201,25 @@ export default function KanbanPage({ onLogout }) {
         </div>
       )}
 
-      {/* Kanban-Board */}
-      <KanbanBoard
-        columns={filteredColumns}
-        horizons={VISIBLE_HORIZONS}
-        onToggleDone={handleToggleDone}
+      {/* Kanban-Board — bei geöffneter Sidebar etwas schmäler auf Desktop (ab lg, darunter Overlay) */}
+      <div className={`h-full transition-all duration-300 ${sidebarTaskId ? "lg:mr-[420px]" : ""}`}>
+        <KanbanBoard
+          columns={filteredColumns}
+          horizons={VISIBLE_HORIZONS}
+          onToggleDone={handleToggleDone}
+          onRefetch={fetchKanban}
+          onNavigate={handleOpenSidebar}
+        />
+      </div>
+
+      {/* Task-Schnellansicht als Sidebar — isModalOpen verhindert ESC-Konflikt (HINWEIS-02) */}
+      <TaskSidePanel
+        taskId={sidebarTaskId}
+        projects={projects}
+        onClose={handleCloseSidebar}
         onRefetch={fetchKanban}
-        onNavigate={navigate}
+        onOpenFull={(id) => navigate(`/task/${id}`)}
+        isModalOpen={createModalOpen}
       />
 
       {/* FAB auf Mobile */}
