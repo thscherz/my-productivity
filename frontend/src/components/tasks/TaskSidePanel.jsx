@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { tasksApi } from "../../api/tasks";
 import { tagsApi } from "../../api/tags";
+import { attachmentsApi } from "../../api/attachments";
+import AttachmentSection from "./AttachmentSection";
 import {
   HORIZON_LABELS,
   HORIZON_DROPDOWN,
@@ -79,6 +81,9 @@ export default function TaskSidePanel({ taskId, projects = [], onClose, onRefetc
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  // Anhänge-State für die Schnellansicht
+  const [attachments, setAttachments] = useState([]);
+
   // Formular-State (sofortige lokale Aktualisierung)
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -91,18 +96,20 @@ export default function TaskSidePanel({ taskId, projects = [], onClose, onRefetc
   const [selectedTagIds, setSelectedTagIds] = useState([]);
   const [dueDate, setDueDate] = useState("");
 
-  // Task laden wenn sich die taskId ändert
+  // Task laden wenn sich die taskId ändert (inkl. Anhänge)
   const fetchTask = useCallback(async () => {
     if (!taskId) return;
     setLoading(true);
     setError("");
     try {
-      const [data, subtaskData] = await Promise.all([
+      const [data, subtaskData, attData] = await Promise.all([
         tasksApi.getById(taskId),
         tasksApi.getAll({ parent_id: taskId }).catch(() => []),
+        attachmentsApi.list(taskId).catch(() => []),
       ]);
       data.subtasks = subtaskData || [];
       setTask(data);
+      setAttachments(attData || []);
       setTitle(data.title || "");
       setDescription(data.description || "");
       setStatus(data.status || "open");
@@ -521,6 +528,13 @@ export default function TaskSidePanel({ taskId, projects = [], onClose, onRefetc
                   ))}
                 </div>
               </div>
+
+              {/* Anhänge — gleiche Funktionalität wie in Detailansicht */}
+              <AttachmentSection
+                taskId={taskId}
+                attachments={attachments}
+                onUpdate={fetchTask}
+              />
 
               {/* Tags */}
               <div>

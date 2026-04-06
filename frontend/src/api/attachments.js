@@ -17,8 +17,19 @@ export const attachmentsApi = {
       body: formData,
     });
     if (!response.ok) {
-      const err = await response.json().catch(() => ({}));
-      throw new Error(err.detail || "Upload fehlgeschlagen");
+      // Sprechende Fehlermeldungen für bekannte HTTP-Statuscodes
+      if (response.status === 413) {
+        throw new Error("Datei zu gross. Maximum: 10 MB.");
+      }
+      if (response.status === 401) {
+        throw new Error("Nicht eingeloggt. Bitte Seite neu laden.");
+      }
+      if (response.status === 404) {
+        throw new Error("Task nicht gefunden.");
+      }
+      // Versuche JSON-Detail zu lesen, Fallback auf Status-Text
+      const err = await response.json().catch(() => null);
+      throw new Error(err?.detail || `Upload fehlgeschlagen (HTTP ${response.status}).`);
     }
     return response.json();
   },
