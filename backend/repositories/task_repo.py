@@ -10,7 +10,7 @@ from models.task import Task
 from models.task_tag import TaskTag
 from models.tag import Tag
 from schemas.task import TaskCreate, TaskUpdate
-from schemas.enums import TimeHorizon
+from schemas.enums import TimeHorizon, TaskStatus
 
 logger = logging.getLogger(__name__)
 
@@ -85,7 +85,15 @@ class TaskRepo:
 
         if time_horizon is not None:
             query = query.filter(Task.time_horizon == time_horizon)
-        if status is not None:
+
+        # Standard: Nur aktive Tasks (open, in_progress, waiting) — nicht done/cancelled
+        if status is None:
+            query = query.filter(Task.status.in_([
+                TaskStatus.OPEN.value,
+                TaskStatus.IN_PROGRESS.value,
+                TaskStatus.WAITING.value,
+            ]))
+        else:
             query = query.filter(Task.status == status)
         if project_id is not None:
             query = query.filter(Task.project_id == project_id)
@@ -162,7 +170,14 @@ class TaskRepo:
             joinedload(Task.parent),
         )
 
-        if status is not None:
+        # Standard: Nur aktive Tasks (open, in_progress, waiting) — nicht done/cancelled
+        if status is None:
+            query = query.filter(Task.status.in_([
+                TaskStatus.OPEN.value,
+                TaskStatus.IN_PROGRESS.value,
+                TaskStatus.WAITING.value,
+            ]))
+        else:
             query = query.filter(Task.status == status)
         if project_id is not None:
             query = query.filter(Task.project_id == project_id)
@@ -173,6 +188,13 @@ class TaskRepo:
             )
 
         all_tasks = query.order_by(Task.position, Task.created_at).all()
+
+        # Subtasks nachträglich filtern (nur active States behalten)
+        active_statuses = {TaskStatus.OPEN.value, TaskStatus.IN_PROGRESS.value, TaskStatus.WAITING.value}
+        for task in all_tasks:
+            if task.subtasks:
+                # Nur Subtasks mit aktiven Status behalten
+                task.subtasks = [s for s in task.subtasks if s.status in active_statuses]
 
         # Alle Zeithorizonte initialisieren (auch leere)
         result: Dict[str, List[Task]] = {horizon.value: [] for horizon in TimeHorizon}
